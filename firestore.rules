@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// CASTLE BREAKER 온라인 기능용 Firestore 보안 규칙.
+// 지정된 소수 인원이 쓰는 프로토타입이라는 전제(§12.3)를 그대로 따른다 —
+// 비밀번호가 없으므로 "uid를 아는 사람은 그 uid로 쓸 수 있다"는 신뢰 모델이다.
+// 실서비스로 넓힐 때는 players 문서 스키마 검증, rate limit 등을 보강할 것.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // 플레이어 프로필 — 본인 문서만 쓸 수 있고, 전부 읽을 수 있다(리더보드용)
+    match /players/{uid} {
+      allow read: if true;
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // 매칭 대기열 — 본인 문서만 만들고/지울 수 있다
+    match /queue/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // 매치 — 당사자만 읽고 쓸 수 있다. 생성은 매칭 트랜잭션에서만 일어난다.
+    match /matches/{matchId} {
+      allow read: if signedIn() &&
+        (resource.data.p1.uid == request.auth.uid || resource.data.p2.uid == request.auth.uid);
+      allow create: if signedIn() &&
+        (request.resource.data.p1.uid == request.auth.uid || request.resource.data.p2.uid == request.auth.uid);
+      allow update: if signedIn() &&
+        (resource.data.p1.uid == request.auth.uid || resource.data.p2.uid == request.auth.uid);
+
+      match /rounds/{round} {
+        allow read, write: if signedIn() &&
+          (get(/databases/$(database)/documents/matches/$(matchId)).data.p1.uid == request.auth.uid ||
+           get(/databases/$(database)/documents/matches/$(matchId)).data.p2.uid == request.auth.uid);
+      }
+
+      match /presence/{side} {
+        allow read, write: if signedIn() &&
+          (get(/databases/$(database)/documents/matches/$(matchId)).data.p1.uid == request.auth.uid ||
+           get(/databases/$(database)/documents/matches/$(matchId)).data.p2.uid == request.auth.uid);
+      }
+    }
+  }
+}
