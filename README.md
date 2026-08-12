@@ -46,7 +46,11 @@ npm run dev
 - Worker: https://castle-breaker-api.castle-breaker-worker.workers.dev
 - Pages: https://castle-breaker.pages.dev
 
-### 직접 배포하려면
+### 자동 배포
+
+`main` 에 push 하면 `.github/workflows/deploy-cloudflare.yml` 이 Worker → Pages 순서로 자동 재배포한다. 저장소 **Settings → Secrets and variables → Actions** 에 `CLOUDFLARE_API_TOKEN`(Workers Scripts:Edit, D1:Edit, Pages:Edit 권한) 과 `CLOUDFLARE_ACCOUNT_ID` 두 개만 등록하면 된다. D1 마이그레이션은 스키마가 바뀔 때만 수동으로 한 번 실행한다(아래).
+
+### 처음부터 다시 배포하려면 (수동)
 
 ```bash
 cd worker && npm install
