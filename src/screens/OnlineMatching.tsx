@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store';
-import { MatchmakingSession } from '../backend/firebase/matchmaking';
+import { MatchmakingSession } from '../backend/cloudflare/matchmaking';
 import { unitSvg } from '../art/parts-svg';
 
 /**

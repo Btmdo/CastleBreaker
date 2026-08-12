@@ -6,7 +6,7 @@ import { unitSvg } from '../../art/parts-svg';
 import { pickOpponent } from '../../ai/opponents';
 import { rngNext } from '../../sim/rng';
 import { Svg } from '../../ui/Svg';
-import { isFirebaseConfigured } from '../../backend/config';
+import { isCloudflareConfigured } from '../../backend/config';
 
 /** 기획서 §12.4 ② 편성 탭 */
 export function DeckEdit() {
@@ -143,9 +143,9 @@ export function DeckEdit() {
           className="btn sortie-btn"
           disabled={!onlineReady}
           onClick={doSortieOnline}
-          title={!isFirebaseConfigured ? '온라인 서버 연결 대기 중 — 곧 활성화됩니다' : ''}
+          title={!isCloudflareConfigured ? '온라인 서버 연결 대기 중 — 곧 활성화됩니다' : ''}
         >
-          {isFirebaseConfigured ? '온라인 대전 매칭' : '온라인 대전 (연결 대기 중)'}
+          {isCloudflareConfigured ? '온라인 대전 매칭' : '온라인 대전 (연결 대기 중)'}
         </button>
         {filled < DECK_SIZE && (
           <div className="deck-note" style={{ color: 'var(--bad)' }}>

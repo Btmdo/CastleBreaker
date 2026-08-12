@@ -2,9 +2,10 @@
 
 조립식 오펜스 대전. [오펜스게임_기획서.md](../오펜스게임_기획서.md) 의 구현체.
 
-**플레이**: https://btmdo.github.io/CastleBreaker/
+**플레이**: https://castle-breaker.pages.dev (Cloudflare Pages, 온라인 대전 켜짐)
+레거시 미러: https://btmdo.github.io/CastleBreaker/ (GitHub Pages, AI 연습만 — 아래 참고)
 
-AI 연습(가상 플레이어 5인)은 지금 바로 되고, **온라인 대전은 Firebase 연결만 하면 켜진다** — 코드는 이미 완성돼 있다(아래 [온라인 기능](#온라인-기능) 참고).
+AI 연습(가상 플레이어 5인)과 **실제 온라인 대전 둘 다 지금 바로 된다.** 백엔드는 Cloudflare Workers + D1 (아래 [온라인 기능](#온라인-기능) 참고).
 
 ## 실행
 
@@ -36,43 +37,61 @@ npm run dev
 - **인증**: 이름만 입력. 이미 있으면 로드, 없으면 신규 생성 + 튜토리얼 자동 표시. 비밀번호 없음 (기획서 §12.3).
 - **신규 계정**: 대표 빌드가 설계 슬롯에 미리 들어가 있고, 그중 6종이 기본 덱으로 편성되어 바로 출격 가능하다.
 - **한줄소개**: 격납고 상단 "+ 내 소개" 로 편집. 매칭 화면에서 상대에게 표시된다 (AI 는 고정 태그라인).
-- **저장**: Firebase 미설정 시 `localStorage`, 설정 시 Firestore. 완전히 같은 프로필 스키마를 쓴다.
+- **저장**: 온라인 백엔드(Cloudflare) 미설정 시 `localStorage`, 설정 시 Cloudflare D1. 완전히 같은 프로필 스키마를 쓴다.
 
 ## 온라인 기능
 
-이 저장소는 **Firebase 연결 값만 빼고** 온라인 대전 전체가 구현돼 있다 (`src/backend/`).
+**백엔드는 Cloudflare Workers + D1 (`worker/`), 프론트는 Cloudflare Pages.** 둘 다 이미 배포돼 있다.
 
-1. Firebase 콘솔에서 프로젝트 생성 → 웹 앱 추가 → Authentication 에서 **익명 로그인** 활성화 → Firestore 생성.
-2. `firestore.rules` 를 그대로 배포 (`firebase deploy --only firestore:rules`) — 지정 소수 인원용 신뢰 모델(§12.3)을 그대로 따른다.
-3. `.env.example` 을 `.env.local` 로 복사하고 `VITE_FIREBASE_*` 값을 채운다. GitHub Pages 배포라면 저장소 **Settings → Secrets and variables → Actions** 에 같은 값들을 등록한다 (`.github/workflows/deploy-pages.yml` 이 빌드 시 주입한다).
-4. 값이 채워지면 격납고 ② 편성 탭의 "온라인 대전 매칭" 버튼이 자동으로 활성화된다. 코드 변경은 필요 없다.
+- Worker: https://castle-breaker-api.castle-breaker-worker.workers.dev
+- Pages: https://castle-breaker.pages.dev
+
+### 직접 배포하려면
+
+```bash
+cd worker && npm install
+npx wrangler d1 create castle-breaker-db     # database_id 를 wrangler.toml 에 반영
+npx wrangler d1 migrations apply castle-breaker-db --remote
+npx wrangler deploy                          # → *.workers.dev URL 확보
+
+cd ..
+cp .env.example .env.local                   # VITE_WORKER_URL 에 위 URL 기입
+DEPLOY_TARGET=cfpages npm run build
+npx wrangler pages project create castle-breaker
+npx wrangler pages deploy dist --project-name castle-breaker
+```
 
 **구조**
 
 ```
+worker/                     ★ Cloudflare Worker (별도 Node 프로젝트, 독립 배포)
+├── wrangler.toml            D1 바인딩
+├── migrations/0001_init.sql players / queue / matches / match_rounds
+└── src/
+    ├── index.ts              fetch() 라우터 — REST API 전체
+    ├── db.ts                 D1 쿼리 헬퍼
+    └── matchmaking.ts        서버사이드 원자적 매칭 (조건부 UPDATE)
+    (../../src/sim/types, constants, builds, rng 를 그대로 import — 중복 정의 없음)
+
 src/backend/
-├── config.ts              VITE_FIREBASE_* 읽기 + isFirebaseConfigured
-├── types.ts                OnlinePlayerInfo / MatchFound — AI 상대와 동일한 셰이프
-└── firebase/
-    ├── app.ts              지연 초기화
-    ├── auth.ts              익명 인증
-    ├── profile.ts           Firestore 프로필 (로컬과 동일 스키마)
-    ├── leaderboard.ts       온라인 리더보드 조회
-    ├── matchmaking.ts       대기열 + 매칭 (임시: 클라이언트 트랜잭션, 아래 참고)
-    └── match.ts             라운드 예약 교환 + 접속 유지 신호
+├── config.ts                VITE_WORKER_URL 읽기 + isCloudflareConfigured
+├── types.ts                  OnlinePlayerInfo / MatchFound — AI 상대와 동일한 셰이프
+└── cloudflare/
+    ├── identity.ts            uid 생성 (crypto.randomUUID, localStorage 고정 — 인증 단계 자체가 없다)
+    ├── http.ts                fetch 래퍼
+    ├── profile.ts             /api/identify, /api/profile 호출
+    ├── leaderboard.ts         /api/leaderboard 호출
+    ├── matchmaking.ts         대기열 join + 폴링(1.5초)
+    └── match.ts               라운드 예약 폴링(0.8초) + presence(5초)
 ```
 
-**핵심 설계**: 실시간 전투 구간은 원래 설계(§11.2)대로 **네트워크 트래픽이 0**이다. 결정론 시뮬레이션이라 양쪽 클라이언트가 같은 시드 + 같은 라운드 예약만 받으면 완전히 동일한 결과를 독립적으로 계산한다. 그래서 온라인 동기화는 "라운드 경계에서 예약 문서 하나 주고받기"로 끝난다 — 실시간 서버가 없어도 성립하는 구조다.
+**핵심 설계**: 실시간 전투 구간은 원래 설계(§11.2)대로 **네트워크 트래픽이 0**이다. 결정론 시뮬레이션이라 양쪽 클라이언트가 같은 시드 + 같은 라운드 예약만 받으면 완전히 동일한 결과를 독립적으로 계산한다. 그래서 온라인 동기화는 "라운드 경계에서 예약 하나 주고받기"로 끝난다.
 
-**임시로 남겨둔 것 (Cloud Functions 없이는 불가능한 부분)**
+**매칭이 서버 권위로 확정된다**: Worker 무료 플랜이라 Durable Objects(WebSocket)는 못 쓰고 D1 + 폴링으로 구현했지만, `/api/queue/poll` 요청을 처리하는 Worker 핸들러 자체가 이미 서버 코드이므로 매칭 페어링을 거기서 직접 확정한다 — 조건부 `UPDATE ... WHERE matched_match_id IS NULL` 하나로 동시 요청의 이중 매칭을 막는다. (이 프로젝트가 이전에 Firebase 로 시도했을 때는 Cloud Functions 없이는 이게 안 돼서 "클라이언트가 직접 트랜잭션으로 조정"하는 임시방편을 썼는데, Cloudflare Workers 는 그 자체가 서버라 이 문제가 아예 없다.)
 
-| 항목 | 지금 방식 | 정식 방식 |
-|---|---|---|
-| 매칭 성사 | 클라이언트가 대기열을 보고 직접 트랜잭션으로 매치 생성 (uid 오름차순 쪽만 생성해 중복 방지) | Cloud Function이 큐를 감시해 서버가 매치 생성 |
-| 연결 끊김 판정 | 5초마다 presence 핑, 상대가 60초 이상 안 보이면 배너만 표시 | Cloud Function 이 자동 몰수패 처리 |
-| 상태 해시 검증 | 라운드마다 해시를 써두고 다르면 콘솔 경고만 | 서버가 스냅샷으로 강제 교정 |
+**남은 한계**: 연결 끊김 판정은 여전히 폴링 기반 유예(§11.5, `RECONNECT_GRACE_SEC`=60초)로만 감지하고 자동 몰수패 처리는 없다 — Durable Objects(유료 플랜)로 올리면 소켓 close 이벤트로 즉시 감지·자동 처리가 가능하며, 그때는 `backend/cloudflare/matchmaking.ts` · `match.ts` 두 파일만 WebSocket 버전으로 바꾸면 된다(공개 인터페이스가 동일하게 유지되도록 설계했다).
 
-지정된 소수 인원이 쓰는 프로토타입이라는 전제(기획서 §12.3) 아래 허용 가능한 절충이다. Cloud Functions 를 추가하면 이 표의 왼쪽 칸만 교체하면 된다.
+**레거시**: `src/backend/firebase/*` 와 `firestore.rules` 는 검토 단계 산출물로 저장소에 남아있지만 `store.ts` 는 더 이상 참조하지 않는다. `.github/workflows/deploy-pages.yml` 도 그대로 둬서 GitHub Pages 미러가 계속 빌드된다 — 다만 그쪽은 `VITE_WORKER_URL` 이 없어 AI 연습만 가능하다.
 
 ## 구조
 
@@ -121,5 +140,5 @@ src/
 ## 알려진 제약
 
 - 전투 루프는 `requestAnimationFrame` 기반이라 **탭이 백그라운드면 진행이 멈춘다** (게임으로서는 정상 동작).
-- 온라인 매칭은 Firebase 미설정 시 버튼 자체가 비활성화된다 — 오늘은 AI 연습만 가능.
+- 온라인 매칭은 `VITE_WORKER_URL` 미설정 시 버튼 자체가 비활성화된다 (GitHub Pages 미러가 이 경우).
 - 밸런스는 기획서 §16.2 목표를 전부 충족하지 못한다 (`npm run sim -- bal` 참고). 장거리 사거리 100~150 구간이 여전히 강하다.

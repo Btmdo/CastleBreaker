@@ -37,3 +37,17 @@ export const FIREBASE_CONFIG: FirebaseWebConfig = {
 /** apiKey 와 projectId 가 둘 다 채워져 있어야 온라인 기능을 켠다 */
 export const isFirebaseConfigured =
   FIREBASE_CONFIG.apiKey.length > 0 && FIREBASE_CONFIG.projectId.length > 0;
+
+/**
+ * Cloudflare Worker 연결 설정. 실제로 쓰는 온라인 백엔드는 이쪽이다 —
+ * `store.ts` 는 `isFirebaseConfigured` 대신 `isCloudflareConfigured` 를 본다.
+ * 위 Firebase 코드는 삭제하지 않고 그대로 둔 것뿐, 어디서도 참조하지 않는다.
+ */
+export const WORKER_URL = (import.meta.env.VITE_WORKER_URL ?? '').replace(/\/$/, '');
+
+export const isCloudflareConfigured = WORKER_URL.length > 0;
+
+/** 매칭 대기열 폴링 주기 (ms) */
+export const QUEUE_POLL_MS = 1500;
+/** 라운드 예약 폴링 주기 (ms) */
+export const ROUND_POLL_MS = 800;

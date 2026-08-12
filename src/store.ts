@@ -4,9 +4,9 @@ import type { MatchStats, PerkId, PlayerProfile, PresetResolved } from './sim/ty
 import * as C from './sim/constants';
 import { eloDelta } from './sim/elo';
 import { identify as identifyLocal, persist } from './storage/local';
-import { isFirebaseConfigured } from './backend/config';
-import { waitForAuth } from './backend/firebase/auth';
-import { loadOrCreateProfile, saveProfile } from './backend/firebase/profile';
+import { isCloudflareConfigured } from './backend/config';
+import { getOrCreateUid } from './backend/cloudflare/identity';
+import { identifyOnline, saveProfileOnline } from './backend/cloudflare/profile';
 import type { MatchFound, OnlinePlayerInfo } from './backend/types';
 
 export type Screen = 'MAIN' | 'IDENTIFY' | 'HANGAR' | 'MATCHING' | 'BATTLE';
@@ -38,7 +38,7 @@ interface AppState {
   screen: Screen;
   profile: PlayerProfile | null;
   backendMode: BackendMode;
-  /** 온라인 백엔드일 때의 Firebase uid. 로컬 백엔드에서는 null */
+  /** 온라인 백엔드일 때의 uid (이 기기에 고정된 UUID). 로컬 백엔드에서는 null */
   uid: string | null;
   identifyBusy: boolean;
   identifyError: string | null;
@@ -95,17 +95,21 @@ export const useApp = create<AppState>((set, get) => ({
 
   /**
    * 기획서 §12.3 — 이름 조회 후 존재하면 로드, 없으면 신규 생성.
-   * Firebase 가 설정돼 있으면 온라인 백엔드(uid 기준)를, 아니면 로컬(localStorage,
-   * 이름 기준)을 그대로 쓴다. 오프라인 프로토타입 동작은 이 분기 이전과 완전히 동일하다.
+   * Cloudflare Worker 가 설정돼 있으면 온라인 백엔드(uid 기준)를, 아니면
+   * 로컬(localStorage, 이름 기준)을 그대로 쓴다. 오프라인 프로토타입 동작은
+   * 이 분기 이전과 완전히 동일하다.
+   *
+   * (`backend/firebase/*` 는 그대로 남아있지만 여기서 더 이상 참조하지 않는다 —
+   * 실제 온라인 백엔드는 Cloudflare 로 교체됐다.)
    */
   doIdentify: async (name) => {
     set({ identifyBusy: true, identifyError: null });
     try {
-      if (isFirebaseConfigured) {
-        const user = await waitForAuth();
-        const { profile, isNew } = await loadOrCreateProfile(user.uid, name.trim());
+      if (isCloudflareConfigured) {
+        const uid = getOrCreateUid();
+        const { profile, isNew } = await identifyOnline(uid, name.trim());
         set({
-          profile, uid: user.uid, backendMode: 'online',
+          profile, uid, backendMode: 'online',
           screen: 'HANGAR', hangarTab: 'design', identifyBusy: false,
           tutorialOpen: isNew || !profile.tutorialSeen,
         });
@@ -125,7 +129,7 @@ export const useApp = create<AppState>((set, get) => ({
   setProfile: (p) => {
     set({ profile: p });
     const { backendMode, uid } = get();
-    if (backendMode === 'online' && uid) void saveProfile(uid, p);
+    if (backendMode === 'online' && uid) void saveProfileOnline(uid, p);
     else persist(p);
   },
 

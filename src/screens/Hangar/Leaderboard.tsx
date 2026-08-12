@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../store';
 import { leaderboard } from '../../storage/local';
-import { fetchOnlineLeaderboard } from '../../backend/firebase/leaderboard';
+import { fetchOnlineLeaderboard } from '../../backend/cloudflare/leaderboard';
 import type { LeaderRow } from '../../sim/types';
 
 /** 기획서 §12.5 — 랭킹 리더보드 (Elo 정렬). 온라인 백엔드면 Firestore 조회로 대체된다. */

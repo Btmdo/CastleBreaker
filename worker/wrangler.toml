@@ -1,0 +1,8 @@
+name = "castle-breaker-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "castle-breaker-db"
+database_id = "ce4f49ac-cbec-49ff-9a77-d18314f328ef"

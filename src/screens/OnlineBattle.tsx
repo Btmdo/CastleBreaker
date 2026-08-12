@@ -14,7 +14,7 @@ import { Svg } from '../ui/Svg';
 import { Result } from './Result';
 import {
   pingPresence, submitRoundOrders, submitStateHash, subscribePresence, subscribeRound,
-} from '../backend/firebase/match';
+} from '../backend/cloudflare/match';
 
 /**
  * 실제 온라인 상대와 겨루는 전투 화면. Battle.tsx(AI 연습)와 시뮬레이션 코어는
